@@ -1,0 +1,16 @@
+# Example configuration file in TOML format
+
+# Specify the domain to update
+domain = "yourdoin.spdns.org"
+
+# Specify the network interface name to retrieve the IPv6 address
+interface = "enp4s0"  # Replace with the name of your network interface
+
+# You can add more settings as needed
+# additional_setting = "some_value"
+username= "username.spdns.org"
+
+password = "somegoodpassww0rd"
+#only until detection is implemented
+ipaddress = "2001:db8::1"
+
