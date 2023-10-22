@@ -2,10 +2,11 @@ use reqwest::Client;
 //use tokio::main;
 use std::error::Error;
 use config::{Config, File};
-use std::net::Ipv6Addr;
-//use ipnetwork::IpNetwork;
+use ipnetwork::IpNetwork;
 use serde::Deserialize;  // Import Deserialize from serde
 use dirs;
+use get_if_addrs::get_if_addrs;
+use std::net::{IpAddr, Ipv6Addr};
 
 #[tokio::main]
 async fn main()->Result<(), Box<dyn Error>> {
@@ -43,19 +44,19 @@ async fn main()->Result<(), Box<dyn Error>> {
             // Create an HTTP client
             let client = Client::new ();
 
-            println !("would Update using: {}", &urlnopass);
+            println!("would Update using: {}", &urlnopass);
             // Return early and don't execute the code below
-            //return Ok(());
+            return Ok(());
             // Make the HTTPS request
             let response = client.get(&url).send().await ? ;
 
             // Check and handle the response
             if response
                 .status().is_success() {
-                    println !("Update successful! using:{} ", urlnopass);
+                    println!("Update successful! using:{} ", urlnopass);
                 }
             else {
-                println !("Update failed. Status: {}", response.status());
+                println!("Update failed. Status: {}", response.status());
             }
 
             Ok(())
@@ -66,21 +67,27 @@ async fn main()->Result<(), Box<dyn Error>> {
     }
 }
 
-fn get_interface_ipv6_address(interface_name
-                              : &str)
-    ->Result<Ipv6Addr, Box<dyn Error>> {
-    // You should implement the logic to retrieve the IPv6 address from the
-    // specified interface here. Replace the code below with your actual
-    // implementation. For Linux, you can use external crates like `netlink` to
-    // interact with the network stack.
 
-    println!("passed interface is {}", interface_name);
-    // For the sake of the example, we'll use a hardcoded IPv6 address.
-    let ipv6_str = "2001:db8::1";  // Replace with the actual address.
+fn get_interface_ipv6_address(interface_name: &str) -> Result<Ipv6Addr, Box<dyn Error>> {
+    // Retrieve the list of network interfaces and their addresses
+    let interfaces = get_if_addrs()?;
 
-    // Parse the IPv6 address string.
-    match ipv6_str.parse() { Ok(ipv6) => Ok(ipv6), Err(e) => Err(e.into()), }
+    // Iterate through all interfaces with a matching name
+    for interface in interfaces.iter().filter(|ifaddr| ifaddr.name == interface_name) {
+
+        // Check if the interface has any non-local IPv6 addresses
+        if let ipv6_addr = interface.ip() {
+            if ipv6_addr.is_ipv6() && !ipv6_addr.is_loopback() {
+                if let IpAddr::V6(ipv6) = ipv6_addr {
+                    return Ok(ipv6);
+                }
+            }
+        }
+    }
+
+    Err("IPv6 address not found for the specified interface".into())
 }
+
 
 #[derive(Debug, Deserialize)]
 struct YourConfigStruct {
