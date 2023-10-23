@@ -11,6 +11,5 @@ interface = "enp4s0"  # Replace with the name of your network interface
 username= "username.spdns.org"
 
 password = "somegoodpassww0rd"
-#only until detection is implemented
-ipaddress = "2001:db8::1"
-
+# optional path where status file is placed - default /var/cache/dnsupdater 
+#status_file_path = "/home/user/cache/dnsupdater"
