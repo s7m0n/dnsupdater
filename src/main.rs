@@ -47,6 +47,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .as_ref()
         .map_or("/var/cache/dnsupdater/status", |path| path.as_str());
 
+    let servername = config
+        .server
+        .as_ref()
+        .map_or("update.spdyn.de", |server| server.as_str());
+
     // Get the IPv6 address of the specified interface
     let ip6addr = get_interface_ipv6_address(&config.interface)?;
 
@@ -62,16 +67,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     } else {
         // Build the URL with dynamic parameters
         let url = format!(
-            "https://{}:{}@update.spdyn.de/nic/update?hostname={}&myip={}",
+            "https://{}:{}@{}/nic/update?hostname={}&myip={}",
             config.username,
             config.password,
+            servername,
             config.domain,
             ip6addr.to_string()
         );
         let urlnopass = format!(
-            "https://{}:{}@update.spdyn.de/nic/update?hostname={}&myip={}",
+            "https://{}:{}@{}/nic/update?hostname={}&myip={}",
             config.username,
             "-hidden-",
+            servername,
             config.domain,
             ip6addr.to_string()
         );
@@ -167,5 +174,6 @@ struct YourConfigStruct {
     username: String,
     password: String,
     statusFilePath: Option<String>,
+    server: Option<String>,
     // Add more fields as needed for your configuration
 }

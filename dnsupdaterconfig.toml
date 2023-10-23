@@ -6,10 +6,15 @@ domain = "yourdoin.spdns.org"
 # Specify the network interface name to retrieve the IPv6 address
 interface = "enp4s0"  # Replace with the name of your network interface
 
-# You can add more settings as needed
-# additional_setting = "some_value"
+#username to use for logon to spdns.de or your configured server
 username= "username.spdns.org"
 
+#password to use
 password = "somegoodpassww0rd"
+
 # optional path where status file is placed - default /var/cache/dnsupdater 
 #status_file_path = "/home/user/cache/dnsupdater"
+
+#server to use - default: update.spdyn.de
+#server = "myserver.url"
+
