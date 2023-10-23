@@ -38,6 +38,9 @@ password = "somegoodpassww0rd"
 
 \# status_file_path = "/home/user/cache/dnsupdater"
 
+\# optional server to use for updating - default update.spdyn.de
+\# server = "your.server.url"
+
 # limitations
 uses ipv6 address from local interface only (ipv4 was not in focus and might come later)
 
