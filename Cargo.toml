@@ -1,7 +1,14 @@
 [package]
 name = "dnsupdater"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+homepage = "https://github.com/s7m0n/dnsupdater"
+repository = "https://github.com/s7m0n/dnsupdater/"
+license = "GPL-3.0"
+readme = "README.md"
+keywords = ["dns", "dyndns"]
+publish = false
+
 
 [dependencies]
 reqwest = "0.11"

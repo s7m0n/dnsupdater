@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Read the previous IP address and timestamp from the status file
     let status_file_path = config
-        .statusFilePath
+        .status_file_path
         .as_ref()
         .map_or("/var/cache/dnsupdater/status", |path| path.as_str());
 
@@ -173,7 +173,7 @@ struct YourConfigStruct {
     interface: String,
     username: String,
     password: String,
-    statusFilePath: Option<String>,
+    status_file_path: Option<String>,
     server: Option<String>,
     // Add more fields as needed for your configuration
 }
