@@ -40,7 +40,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     settings.merge(system_config)?;
     let config = settings.try_into::<YourConfigStruct>()?;
 
-    let status_directory_path = "/var/lib/cache/dnsupdater";
+    // Read the previous IP address and timestamp from the status file
+    let status_directory_path = config
+        .status_file_path
+        .as_ref()
+        .map_or("/var/lib/cache/dnsupdater/", |path| path.as_str());
+
+    // Combine the directory path with the "status" filename
+    let combinedpath = Path::new(status_directory_path).join("status");
+    let status_file_path = combinedpath
+        .to_str()
+        .unwrap_or("/var/lib/cache/dnsupdater/status");
 
     if !Path::new(&status_directory_path).exists() {
         println!(
@@ -53,11 +63,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             status_directory_path
         );
     }
-    // Read the previous IP address and timestamp from the status file
-    let status_file_path = config
-        .status_file_path
-        .as_ref()
-        .map_or("/var/lib/cache/dnsupdater/status", |path| path.as_str());
 
     let servername = config
         .server

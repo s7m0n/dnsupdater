@@ -12,7 +12,7 @@ username= "username.spdns.org"
 #password to use
 password = "somegoodpassww0rd"
 
-# optional path where status file is placed - default /var/cache/dnsupdater 
+# optional path where status file is placed - default /var/lib/cache/dnsupdater 
 #status_file_path = "/home/user/cache/dnsupdater"
 
 #server to use - default: update.spdyn.de

@@ -5,7 +5,7 @@ simple updater for spdns using dyndns (rust)
 
 # usage
 place and adapt dnsuptdaterconfig.toml in your /home/user/.config/ or /etc/
-create a directory /var/cache/dnsupdater/ which is writable for the user of the app
+create a directory /var/lib/cache/dnsupdater/ which is writable for the user of the app
 
 invoke on demand or from cron
 
