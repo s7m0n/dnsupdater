@@ -3,15 +3,14 @@ use clap::{App, Arg};
 use config::{Config, File};
 use dirs;
 use get_if_addrs::get_if_addrs;
-use reqwest::Client;
+use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::error::Error;
 use std::fs;
 use std::net::{IpAddr, Ipv6Addr};
 use std::path::Path;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::new("DNS Updater")
         .version("1.0")
         .author("")
@@ -41,11 +40,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     settings.merge(system_config)?;
     let config = settings.try_into::<YourConfigStruct>()?;
 
+    let status_directory_path = "/var/lib/cache/dnsupdater";
+
+    if !Path::new(&status_directory_path).exists() {
+        println!(
+            "directory for status file doesn't exist: {}",
+            status_directory_path
+        );
+    } else if !is_writable(&status_directory_path) {
+        println!(
+            "No write access to status file directory: {}",
+            status_directory_path
+        );
+    }
     // Read the previous IP address and timestamp from the status file
     let status_file_path = config
         .status_file_path
         .as_ref()
-        .map_or("/var/cache/dnsupdater/status", |path| path.as_str());
+        .map_or("/var/lib/cache/dnsupdater/status", |path| path.as_str());
 
     let servername = config
         .server
@@ -87,14 +99,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let client = Client::new();
 
         println!("would Update using: {}", &urlnopass);
-        // Return early and don't execute the code below
 
         // Make the HTTPS request
         if is_dry_run {
             write_status_file(status_file_path, ip6addr.to_string())?;
             println!("Dry run done with updating status file!");
         } else {
-            let response = client.get(&url).send().await?;
+            let response = client.get(&url).send()?;
             if response.status().is_success() {
                 write_status_file(status_file_path, ip6addr.to_string())?;
                 println!("Update successful! using:{} ", urlnopass);
@@ -162,9 +173,24 @@ fn read_status_file(status_file_path: &str) -> Result<(String, DateTime<Utc>), B
 fn write_status_file(status_file_path: &str, ip: String) -> Result<(), Box<dyn Error>> {
     let timestamp = Utc::now();
     let status = format!("{},{}\n", ip, timestamp.to_rfc3339());
-    fs::write(status_file_path, status)?;
 
-    Ok(())
+    match fs::write(status_file_path, status) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            eprintln!(
+                "Failed to write status file: {} to {}",
+                status_file_path, err
+            );
+            Err(err.into())
+        }
+    }
+}
+
+fn is_writable(path: &str) -> bool {
+    if let Ok(meta) = fs::metadata(path) {
+        return !meta.permissions().readonly();
+    }
+    false
 }
 
 #[derive(Debug, Deserialize)] //
