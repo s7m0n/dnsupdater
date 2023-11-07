@@ -1,65 +1,24 @@
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc};
 use clap::{App, Arg};
 use config::{Config, File as ConfigFile};
 use dirs;
 use get_if_addrs::get_if_addrs;
+use logging::Logger;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::error::Error;
 use std::fs;
-use std::fs::{File, OpenOptions};
-use std::io::{Result as IOResult, Write};
 use std::net::{IpAddr, Ipv6Addr};
 use std::path::Path;
 use std::process;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 
-// Define a trait for the logger
-trait Logger: Send + Sync {
-    fn log(&self, message: &str);
-}
-
-// Implement a logger that logs to the standard output
-struct StdoutLogger;
-
-impl Logger for StdoutLogger {
-    fn log(&self, message: &str) {
-        println!("{}", message);
-    }
-}
-
-struct FileLogger {
-    file: File,
-    file_path: String, // Store the file path here
-}
-
-impl FileLogger {
-    fn new(file_path: &str) -> IOResult<FileLogger> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(file_path)?;
-
-        Ok(FileLogger {
-            file,
-            file_path: file_path.to_string(), // Store the file path
-        })
-    }
-}
-
-impl Logger for FileLogger {
-    fn log(&self, message: &str) {
-        println!("Logging to file: {}", self.file_path);
-        let now = Local::now();
-        let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
-        let log_line = format!("{}: {}", timestamp, message);
-
-        if let Err(err) = writeln!(&self.file, "{}", log_line) {
-            eprintln!("Error writing to log file: {}", err);
-        }
-    }
-}
+mod logging;
+macro_rules! log {
+    ($logger:expr, $($arg:tt)*) => {
+        $logger.lock().unwrap().log(&format!($($arg)*));
+    };}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("DNS Updater")
@@ -79,24 +38,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Force the update even if the IP address hasn't changed"),
         )
         .arg(
-            Arg::with_name("demon")
+            Arg::with_name("daemon")
                 .short("d")
-                .long("demon")
-                .help("run as demon until stopped in background"),
+                .long("daemon")
+                .help("run as daemon until stopped in background"),
         )
         .get_matches();
 
     let is_dry_run = matches.is_present("dry-run");
     let is_force = matches.is_present("force");
-    let is_demon = matches.is_present("demon");
+    let is_daemon = matches.is_present("daemon");
 
     let logger: Arc<Mutex<dyn Logger>>;
 
-    if is_demon {
-        // Define the log file path
-        let log_file_path = "./dnsupdater.log";
+    let system_config_path = Path::new("/etc/dnsupdaterconfig.toml");
 
-        match FileLogger::new(log_file_path) {
+    let user_config = load_user_config()?;
+    let system_config = load_system_config(system_config_path)?;
+    let mut settings = user_config.clone();
+    settings.merge(system_config)?;
+    let config = settings.try_into::<YourConfigStruct>()?;
+
+    if is_daemon {
+        let log_file_path = config
+            .logfilepath
+            .as_ref()
+            .map_or("/var/log/dnsupdater.log", |path| path.as_str());
+
+        match logging::FileLogger::new(log_file_path) {
             Ok(file_logger) => {
                 logger = Arc::new(Mutex::new(file_logger));
             }
@@ -106,16 +75,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     } else {
-        logger = Arc::new(Mutex::new(StdoutLogger));
+        logger = Arc::new(Mutex::new(logging::StdoutLogger));
     }
-
-    let system_config_path = Path::new("/etc/dnsupdaterconfig.toml");
-
-    let user_config = load_user_config()?;
-    let system_config = load_system_config(system_config_path)?;
-    let mut settings = user_config.clone();
-    settings.merge(system_config)?;
-    let config = settings.try_into::<YourConfigStruct>()?;
 
     // Read the previous IP address and timestamp from the status file
     let status_directory_path = config
@@ -135,9 +96,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap()
             .log("directory for status file doesn't exist: {status_directory_path}");
     } else if !is_writable(&status_directory_path) {
-        println!(
+        log!(
+            logger,
             "No write access to status file directory: {}",
-            status_directory_path
+            status_directory_path,
         );
     }
 
@@ -155,39 +117,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: config.username.to_string(),
         is_force,
         is_dry_run,
-        is_demon,
+        is_daemon,
     };
-
-    /*
-    if is_demon {
-        println!("Running in daemon mode.");
-        logger.lock().unwrap().log("prepare daemon ...");
-
-        let logger_clone = logger.clone();
-
-        logger_clone.lock().unwrap().log("writing to clone");
-        // Spawn a new thread for the daemon
-        let _daemon_thread = std::thread::spawn(move || {
-            // Daemon logic here
-            logger_clone.lock().unwrap().log("Daemon is running...");
-            println!("da fuck");
-            match business_logic(exec_config, &logger_clone) {
-                Ok(_) => {
-                    // Successful execution of business_logic
-                    // You can add more logic here if needed
-                }
-                Err(err) => {
-                    // Handle the error from business_logic
-                    eprintln!("Error in business logic: {:?}", err);
-                }
-            }
-        });
-        _daemon_thread.join().expect("The thread panicked");
-        Ok(())
-        // Exit the main thread immediately
-        // std::process::exit(0);
-    } else {
-    */
 
     business_logic(exec_config, &logger)
 }
@@ -197,8 +128,6 @@ fn business_logic(
     logger: &Arc<Mutex<dyn Logger>>,
 ) -> Result<(), Box<dyn Error>> {
     loop {
-        logger.lock().unwrap().log("test");
-
         // Get the IPv6 address of the specified interface
         let ip6addr = get_interface_ipv6_address(&config.interface)?;
 
@@ -207,7 +136,8 @@ fn business_logic(
 
         // Check if the current IP address is the same as the previous one
         if ip6addr.to_string() == prev_ip && !config.is_force {
-            println!(
+            log!(
+                logger,
                 "IP address has not changed since last update:{}. Skipping update.",
                 prev_time
             );
@@ -233,25 +163,25 @@ fn business_logic(
             // Create an HTTP client
             let client = Client::new();
 
-            println!("would Update using: {}", &urlnopass);
+            log!(logger, "would Update using: {}", &urlnopass);
 
             // Make the HTTPS request
             if config.is_dry_run {
                 write_status_file(config.status_file_path.as_str(), ip6addr.to_string())?;
-                println!("Dry run done with updating status file!");
+                log!(logger, "Dry run done with updating status file!");
             } else {
                 let response = client.get(&url).send()?;
                 if response.status().is_success() {
                     write_status_file(config.status_file_path.as_str(), ip6addr.to_string())?;
-                    println!("Update successful! using:{} ", urlnopass);
+                    log!(logger, "Update successful! using:{} ", urlnopass);
                 } else {
-                    println!("Update failed. Status: {}", response.status());
+                    log!(logger, "Update failed. Status: {}", response.status());
                     break;
                 }
             }
         }
 
-        if !config.is_demon {
+        if !config.is_daemon {
             break;
         }
         // Sleep for 5 minutes
@@ -336,7 +266,6 @@ fn is_writable(path: &str) -> bool {
     }
     false
 }
-
 #[derive(Debug, Deserialize)] //
 struct YourConfigStruct {
     domain: String,
@@ -345,6 +274,7 @@ struct YourConfigStruct {
     password: String,
     status_file_path: Option<String>,
     server: Option<String>,
+    logfilepath: Option<String>,
     // Add more fields as needed for your configuration
 }
 
@@ -357,5 +287,5 @@ struct ExecConfig {
     username: String,
     is_force: bool,
     is_dry_run: bool,
-    is_demon: bool,
+    is_daemon: bool,
 }
