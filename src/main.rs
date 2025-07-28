@@ -13,12 +13,20 @@ use std::path::Path;
 use std::process;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
+//syslog stuff
+use gethostname;
+extern crate syslog;
+#[macro_use]
+extern crate log;
+use log::{LevelFilter, SetLoggerError};
+use syslog::{BasicLogger, Facility, Formatter3164};
 
 mod logging;
 macro_rules! log {
     ($logger:expr, $($arg:tt)*) => {
         $logger.lock().unwrap().log(&format!($($arg)*));
-    };}
+    };
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("DNS Updater")
@@ -50,6 +58,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let is_daemon = matches.is_present("daemon");
 
     let logger: Arc<Mutex<dyn Logger>>;
+
+    // tmp syslog
+    let machine_hostname = gethostname::gethostname()
+        .into_string()
+        .unwrap_or("unknown".to_string());
+
+    let formatter = Formatter3164 {
+        facility: Facility::LOG_DAEMON,
+        hostname: Some(machine_hostname),
+        process: "dnsupdater".into(),
+        pid: std::process::id(),
+    };
+
+    let syslogger = syslog::unix(formatter).expect("could not connect to syslog");
+
+    log::set_boxed_logger(Box::new(BasicLogger::new(syslogger)))
+        .map(|()| log::set_max_level(LevelFilter::Info));
+
+    info!("hello world");
+    // end tmp syslog
 
     let system_config_path = Path::new("/etc/dnsupdaterconfig.toml");
 
@@ -101,6 +129,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "No write access to status file directory: {}",
             status_directory_path,
         );
+        error!(
+            "No write access to status file directory: {}",
+            status_directory_path
+        );
     }
 
     let servername = config
@@ -142,6 +174,12 @@ fn business_logic(
                 prev_time
             );
         } else {
+            log!(
+                logger,
+                "IP changed old/new: {} {} - prepare update!",
+                prev_ip,
+                ip6addr.to_string()
+            );
             // Build the URL with dynamic parameters
             let url = format!(
                 "https://{}:{}@{}/nic/update?hostname={}&myip={}",
@@ -184,8 +222,8 @@ fn business_logic(
         if !config.is_daemon {
             break;
         }
-        // Sleep for 5 minutes
-        sleep(std::time::Duration::new(300, 0));
+        // Sleep for 50 minutes
+        sleep(std::time::Duration::new(3000, 0));
     }
 
     Ok(())
@@ -221,6 +259,7 @@ fn load_user_config() -> Result<Config, config::ConfigError> {
     }
     Ok(config)
 }
+
 fn load_system_config(system_config_path: &Path) -> Result<Config, config::ConfigError> {
     let mut config = Config::default();
     if system_config_path.exists() {

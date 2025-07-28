@@ -1,6 +1,6 @@
 [package]
 name = "dnsupdater"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 homepage = "https://github.com/s7m0n/dnsupdater"
 repository = "https://github.com/s7m0n/dnsupdater/"
@@ -21,3 +21,7 @@ dirs = "3.0"
 get_if_addrs = "0.5"
 chrono = "0.4"
 clap = "2"
+syslog = "6"
+log         = { version = "0.4.8", features = [ "std" ] }
+gethostname = "0.4.3"
+igd = "0.12.1"
