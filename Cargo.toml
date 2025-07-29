@@ -24,4 +24,5 @@ clap = "2"
 syslog = "6"
 log         = { version = "0.4.8", features = [ "std" ] }
 gethostname = "0.4.3"
-igd = "0.12.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+igd = { version = "0.12", features = ["aio"] }

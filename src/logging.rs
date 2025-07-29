@@ -1,5 +1,5 @@
 use chrono::Local;
-use log::{self, Level, Metadata, Record};
+use log::{self};
 use std::fs::{File, OpenOptions};
 use std::io::{Result as IOResult, Write};
 

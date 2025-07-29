@@ -4,22 +4,24 @@ use config::{Config, File as ConfigFile};
 use dirs;
 use get_if_addrs::get_if_addrs;
 use logging::Logger;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::Deserialize;
 use std::error::Error;
 use std::fs;
-use std::net::{IpAddr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::process;
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
 //syslog stuff
 use gethostname;
 extern crate syslog;
 #[macro_use]
 extern crate log;
+use igd::aio::search_gateway;
 use log::{LevelFilter, SetLoggerError};
 use syslog::{BasicLogger, Facility, Formatter3164};
+use tokio::runtime::Runtime;
+use tokio::time::{sleep, Duration};
 
 mod logging;
 macro_rules! log {
@@ -28,7 +30,8 @@ macro_rules! log {
     };
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("DNS Updater")
         .version("1.0")
         .author("")
@@ -84,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_config = load_user_config()?;
     let system_config = load_system_config(system_config_path)?;
     let mut settings = user_config.clone();
-    settings.merge(system_config)?;
+    settings.merge(system_config);
     let config = settings.try_into::<YourConfigStruct>()?;
 
     if is_daemon {
@@ -152,22 +155,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         is_daemon,
     };
 
-    business_logic(exec_config, &logger)
+    business_logic(exec_config, &logger).await?;
+    Ok(())
 }
 
-fn business_logic(
+async fn business_logic(
     config: ExecConfig,
     logger: &Arc<Mutex<dyn Logger>>,
 ) -> Result<(), Box<dyn Error>> {
     loop {
         // Get the IPv6 address of the specified interface
         let ip6addr = get_interface_ipv6_address(&config.interface)?;
+        let ip4addr = get_ip4_addrress().await?;
+        log!(logger, "got ipv4 {}", ip4addr.to_string());
 
         // Read the previous IP address and timestamp from the status file
-        let (prev_ip, prev_time) = read_status_file(config.status_file_path.as_str())?;
+        let (prev_ip6, prev_ip4, prev_time) = read_status_file(config.status_file_path.as_str())?;
 
         // Check if the current IP address is the same as the previous one
-        if ip6addr.to_string() == prev_ip && !config.is_force {
+        if ip6addr.to_string() == prev_ip6 && ip4addr.to_string() == prev_ip4 && !config.is_force {
             log!(
                 logger,
                 "IP address has not changed since last update:{}. Skipping update.",
@@ -176,9 +182,11 @@ fn business_logic(
         } else {
             log!(
                 logger,
-                "IP changed old/new: {} {} - prepare update!",
-                prev_ip,
-                ip6addr.to_string()
+                "IP changed old/new: {}/{}\n{}{}   - prepare update!",
+                prev_ip6,
+                ip6addr.to_string(),
+                prev_ip4,
+                ip4addr.to_string()
             );
             // Build the URL with dynamic parameters
             let url = format!(
@@ -205,12 +213,20 @@ fn business_logic(
 
             // Make the HTTPS request
             if config.is_dry_run {
-                write_status_file(config.status_file_path.as_str(), ip6addr.to_string())?;
+                write_status_file(
+                    config.status_file_path.as_str(),
+                    ip6addr.to_string(),
+                    ip4addr.to_string(),
+                )?;
                 log!(logger, "Dry run done with updating status file!");
             } else {
-                let response = client.get(&url).send()?;
+                let response = client.get(&url).send().await?;
                 if response.status().is_success() {
-                    write_status_file(config.status_file_path.as_str(), ip6addr.to_string())?;
+                    write_status_file(
+                        config.status_file_path.as_str(),
+                        ip6addr.to_string(),
+                        ip4addr.to_string(),
+                    )?;
                     log!(logger, "Update successful! using:{} ", urlnopass);
                 } else {
                     log!(logger, "Update failed. Status: {}", response.status());
@@ -223,10 +239,26 @@ fn business_logic(
             break;
         }
         // Sleep for 50 minutes
-        sleep(std::time::Duration::new(3000, 0));
+        // sleep(std::time::Duration::new(3000, 0));
+        tokio::time::sleep(Duration::from_secs(3000)).await;
     }
 
     Ok(())
+}
+
+async fn get_ip4_addrress() -> Result<Ipv4Addr, Box<dyn Error>> {
+    let gateway = search_gateway(Default::default())
+        .await
+        .map_err(|e| format!("Failed to find gateway: {}", e))?;
+
+    let ip = gateway
+        .get_external_ip()
+        .await
+        .map_err(|e| format!("Failed to get external IP: {}", e))?;
+
+    //println!("External IPv4: {}", ip);
+
+    Ok(ip)
 }
 
 fn get_interface_ipv6_address(interface_name: &str) -> Result<Ipv6Addr, Box<dyn Error>> {
@@ -249,7 +281,7 @@ fn get_interface_ipv6_address(interface_name: &str) -> Result<Ipv6Addr, Box<dyn 
     Err("IPv6 address not found for the specified interface".into())
 }
 
-fn load_user_config() -> Result<Config, config::ConfigError> {
+fn load_user_config() -> Result<Config, Box<dyn std::error::Error>> {
     let mut config = Config::default();
     if let Some(home_dir) = dirs::home_dir() {
         let user_config_path = home_dir.join(".config/dnsupdaterconfig.toml");
@@ -260,7 +292,7 @@ fn load_user_config() -> Result<Config, config::ConfigError> {
     Ok(config)
 }
 
-fn load_system_config(system_config_path: &Path) -> Result<Config, config::ConfigError> {
+fn load_system_config(system_config_path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
     let mut config = Config::default();
     if system_config_path.exists() {
         config.merge(ConfigFile::from(system_config_path))?;
@@ -268,24 +300,31 @@ fn load_system_config(system_config_path: &Path) -> Result<Config, config::Confi
     Ok(config)
 }
 
-fn read_status_file(status_file_path: &str) -> Result<(String, DateTime<Utc>), Box<dyn Error>> {
+fn read_status_file(
+    status_file_path: &str,
+) -> Result<(String, String, DateTime<Utc>), Box<dyn Error>> {
     if let Ok(file_content) = fs::read_to_string(status_file_path) {
-        if let Some((ip, timestamp_str)) = file_content.lines().next().map(|line| {
+        if let Some((ip6, ip4, timestamp_str)) = file_content.lines().next().map(|line| {
             let mut parts = line.split(',');
-            let ip = parts.next().unwrap_or("");
+            let ip6 = parts.next().unwrap_or("");
+            let ip4 = parts.next().unwrap_or("");
             let timestamp_str = parts.next().unwrap_or("");
-            (ip.to_string(), timestamp_str.to_string())
+            (ip6.to_string(), ip4.to_string(), timestamp_str.to_string())
         }) {
             let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)?.with_timezone(&Utc);
-            return Ok((ip, timestamp));
+            return Ok((ip6, ip4, timestamp));
         }
     }
-    Ok(("".to_string(), Utc::now()))
+    Ok(("".to_string(), "".to_string(), Utc::now()))
 }
 
-fn write_status_file(status_file_path: &str, ip: String) -> Result<(), Box<dyn Error>> {
+fn write_status_file(
+    status_file_path: &str,
+    ip6: String,
+    ip4: String,
+) -> Result<(), Box<dyn Error>> {
     let timestamp = Utc::now();
-    let status = format!("{},{}\n", ip, timestamp.to_rfc3339());
+    let status = format!("{},{},{}\n", ip6, ip4, timestamp.to_rfc3339());
 
     match fs::write(status_file_path, status) {
         Ok(_) => Ok(()),
