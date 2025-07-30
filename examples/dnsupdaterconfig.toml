@@ -1,23 +1,39 @@
 # Example configuration file in TOML format
 
-# Specify the domain to update
-domain = "yourdoin.spdns.org"
-
 # Specify the network interface name to retrieve the IPv6 address
 interface = "enp4s0"  # Replace with the name of your network interface
-
-#username to use for logon to spdns.de or your configured server
-username= "username.spdns.org"
-
-#password to use
-password = "somegoodpassww0rd"
 
 # optional path where status file is placed - default /var/lib/cache/dnsupdater 
 #status_file_path = "/home/user/cache/dnsupdater"
 
-#server to use - default: update.spdyn.de
-#server = "myserver.url"
-
 # logfilepath to be used in daemon mode - default: /var/log/dnsupdater.log
 #logfilepath = "/var/log/dnsupdater.log"
 
+# List of DDNS configurations
+[[ddns]]
+name = "spdyn-main"
+provider = "Spdyn"
+server = "update.spdyn.de"
+domain = "yourdomain.spdns.org"
+username = "username.for.spdns.org"
+password = "somegoodpassww0rd"
+
+#[[ddns]]
+#name = "cf.yourdomain.org-AAAA"
+#provider = "Cloudflare"
+#zone_id = "yourzoneid"
+#record_name = "yourdomain.org"
+#record_type = "AAAA"
+#api_token = "your_cloudflare_api_token"
+#proxied = false
+#ttl = 120
+
+[[ddns]]
+name = "cf.yourdomain.org-A"
+provider = "Cloudflare"
+zone_id = "yourzoneid"
+record_name = "subdomain.yourdomain.org"
+record_type = "A"
+api_token = "your_cloudflare_api_token"
+proxied = false
+ttl = 120

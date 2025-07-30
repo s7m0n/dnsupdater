@@ -1,5 +1,5 @@
 use chrono::Local;
-use log::{self};
+//use log::{self};
 use std::fs::{File, OpenOptions};
 use std::io::{Result as IOResult, Write};
 
@@ -35,7 +35,7 @@ impl FileLogger {
 
 impl Logger for FileLogger {
     fn log(&self, message: &str) {
-        //println!("Logging to file: {}", self.file_path);
+        println!("Logging to file: {}", self.file_path);
         let now = Local::now();
         let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
         let log_line = format!("{}: {}", timestamp, message);
