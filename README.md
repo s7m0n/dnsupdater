@@ -1,5 +1,5 @@
 # dnsupdater
-simple updater for spdns using dyndns (rust)
+simple updater for spdns/cloudflare using dyndns (rust)
 
 # Early stage! Use at your own risk
 
@@ -19,6 +19,8 @@ invoke on demand or from cron
 -d or --daemon to act as a daemon running until killed checking for changes (5min interval poll for now) on interface and triggering an update if needed
 
 # configuration options in file (dnsupdaterconfig.toml)
+\# check example provided for more details (multiple ddns entries)
+
 \# Specify the domain to update
 
 domain = "yourdomain.spdns.org"
@@ -50,5 +52,6 @@ password = "somegoodpassww0rd"
 
 
 # limitations
-uses ipv6 address from local interface only (ipv4 was not in focus and might come later)
+uses ipv6 address from local interface only 
+ipv4 only via igd for now (variations not in focus and might come later)
 
