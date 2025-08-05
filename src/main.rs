@@ -168,9 +168,11 @@ async fn update_spdyn(
             name,
         } = entry
         {
-            println!(
+            log!(
+                logger,
                 "Updating SPDYN for domain: {} via server: {}",
-                domain, server
+                domain,
+                server
             );
             let ipv6 = &config.ipv6;
             //            let ipv4 = &config.ipv4;
@@ -239,9 +241,11 @@ async fn update_cloudflare(
             ttl,
         } = entry
         {
-            println!(
+            log!(
+                logger,
                 "Updating cloudflare for record: {} and type  {}",
-                record_name, record_type
+                record_name,
+                record_type
             );
             let ipv6 = &config.ipv6;
             let ipv4 = &config.ipv4;
